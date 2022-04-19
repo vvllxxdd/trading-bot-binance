@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { Coin, QueryParams } from "../types/types";
-import { stringify } from "querystring";
+import { ParsedUrlQueryInput, stringify } from "querystring";
 import { Config } from "../config";
 import { fetchWrapper, RequestMethod } from "../helpers/fetchWrapper";
 import {
@@ -9,7 +9,6 @@ import {
   QuoteCurrency,
   SideEffectType,
 } from "../types/enums";
-import { createPath } from "../helpers/createPath";
 import { CandleChartInterval, Order, OrderStatus } from "binance-api-node";
 import Binance from "binance-api-node";
 
@@ -17,13 +16,8 @@ const binanceClient = Binance({});
 
 export class TradingService {
   private readonly config = Config;
-  private readonly apiKey = this.config.binance_key;
   private readonly apiSecret = this.config.binance_secret;
   private readonly apiUrl = this.config.binanceApiUrl;
-  private binanceClient = Binance({
-    apiKey: this.apiKey,
-    apiSecret: this.apiSecret,
-  });
 
   createSignature(params: QueryParams | undefined) {
     return crypto
@@ -35,14 +29,15 @@ export class TradingService {
   async marketBuy(
     pair: string,
     quoteQuantity?: number,
-    sideEffectType?: string,
+    sideEffectType = SideEffectType.MARGIN_BUY,
     type = OrderType.MARKET
   ): Promise<Order> {
     const queryParams: QueryParams = {
       symbol: pair,
+      isIsolated: false,
       side: OrderSide.BUY,
       type,
-      quoteQuantity,
+      quoteOrderQty: quoteQuantity,
       recvWindow: 30000,
       sideEffectType,
       timestamp: Date.now(),
@@ -51,14 +46,16 @@ export class TradingService {
     queryParams.signature = this.createSignature(queryParams);
 
     try {
-      const response = await fetchWrapper(
-        createPath(`${this.apiUrl}/sapi/v1/margin/order`, queryParams),
-        { method: RequestMethod.POST }
-      );
+      const path = `${this.apiUrl}/sapi/v1/margin/order?${stringify(
+        queryParams as unknown as ParsedUrlQueryInput
+      )}`;
+      const response = await fetchWrapper(path, {
+        method: RequestMethod.POST,
+      });
 
       return response as Order;
     } catch (error) {
-      throw new Error(error);
+      throw error as Error;
     }
   }
 
@@ -70,9 +67,10 @@ export class TradingService {
   ): Promise<Order> {
     const queryParams: QueryParams = {
       symbol: pair,
+      isIsolated: false,
       side: OrderSide.SELL,
       type,
-      quoteQuantity,
+      quoteOrderQty: quoteQuantity,
       recvWindow: 30000,
       sideEffectType,
       timestamp: Date.now(),
@@ -81,14 +79,14 @@ export class TradingService {
     queryParams.signature = this.createSignature(queryParams);
 
     try {
-      const response = await fetchWrapper(
-        createPath(`${this.apiUrl}/sapi/v1/margin/order`, queryParams),
-        { method: RequestMethod.POST }
-      );
+      const path = `${this.apiUrl}/sapi/v1/margin/order?${stringify(
+        queryParams as unknown as ParsedUrlQueryInput
+      )}`;
+      const response = await fetchWrapper(path, { method: RequestMethod.POST });
 
       return response as Order;
     } catch (error) {
-      throw new Error(error);
+      throw error as Error;
     }
   }
 
@@ -123,13 +121,14 @@ export class TradingService {
     });
 
     const hasNegativePriceChange = priceChangePercent < 0;
+    const buyTheDipFactor = hasNegativePriceChange ? 2 : 1;
 
     console.log(
       `Price for ${ticker} changed ${priceChangePercent}% in the last selected candle.`
     );
 
     const adjustedQuantity =
-      quantity * (1 + Math.abs(priceChangePercent) / 100);
+      quantity * (1 + Math.abs(priceChangePercent * buyTheDipFactor) / 100);
 
     const response = hasNegativePriceChange
       ? await this.marketBuy(pair, adjustedQuantity)
@@ -141,9 +140,11 @@ export class TradingService {
       response.orderId
     ) {
       console.log(
-        `Successfully purchased: ${
-          response.executedQty
-        } ${currency} worth of ${ticker} @ ${response.fills?.shift()?.price}\n`
+        `Successfully ${
+          hasNegativePriceChange ? "purchased" : "sold"
+        }: ${adjustedQuantity}${currency} worth of ${ticker} @ ${
+          response.fills?.shift()?.price
+        }\n`
       );
     } else {
       console.error(`Unexpected error placing buy order for ${pair}`);

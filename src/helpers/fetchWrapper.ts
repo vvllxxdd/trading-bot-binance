@@ -9,7 +9,6 @@ export enum RequestMethod {
 
 export enum ContentType {
   JSON = "application/json",
-  FORM_URL_ENCODED = "application/x-www-form-urlencoded",
 }
 
 export type HeadersType = { [key: string]: string };
@@ -39,7 +38,7 @@ export const fetchWrapper = async <T = unknown>(
     method = RequestMethod.GET,
     headers = {
       "X-MBX-APIKEY": apiKey!,
-      "Content-Type": "application/json",
+      "Content-Type": ContentType.JSON,
     },
   }: Partial<RequestConfig> = {}
 ): Promise<T> => {

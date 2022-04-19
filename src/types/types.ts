@@ -17,10 +17,11 @@ export interface IConfig {
 
 export interface QueryParams {
   side: string;
+  isIsolated: boolean;
   type: string;
   symbol: string;
   signature?: string;
-  quoteQuantity?: number;
+  quoteOrderQty?: number;
   sideEffectType?: string;
   recvWindow?: number;
   timestamp?: Date | number;
